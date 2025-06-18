@@ -5,6 +5,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import connectDB from './db.js'; // Make sure db.js uses `export default`
 import problemRoutes from './routes/problemRoutes.js';
+import feedbackRoutes from './routes/feedbackRoutes.js';
 
 dotenv.config();
 
@@ -17,6 +18,7 @@ app.use(express.json());
 
 // Routes
 app.use('/api/problems', problemRoutes);
+app.use('/api/feedback', feedbackRoutes);
 
 // Connect DB and start server
 connectDB().then(() => {

@@ -31,28 +31,13 @@ const Problems = () => {
         const saved = localStorage.getItem('completedProblems');
         return saved ? JSON.parse(saved) : [];
     });
-    const [darkMode, setDarkMode] = useState(() => {
-        const saved = localStorage.getItem('darkMode');
-        if (saved !== null) return JSON.parse(saved);
-        return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    });
-    const [currentPage, setCurrentPage] = useState(1);
-    const problemsPerPage = 50;
-    const [expandedTags, setExpandedTags] = useState({});
-    const initialTagsToShow = 3;
     const [stats, setStats] = useState({ total: 0, completed: 0 });
     const [showTopics, setShowTopics] = useState(false);
     const [feedback, setFeedback] = useState('');
-
-    // Apply dark mode class to document
-    useEffect(() => {
-        if (darkMode) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-        localStorage.setItem('darkMode', JSON.stringify(darkMode));
-    }, [darkMode]);
+    const [expandedCompanies, setExpandedCompanies] = useState({});
+    const [currentPage, setCurrentPage] = useState(1);
+    const problemsPerPage = 20;
+    const [difficultyStats, setDifficultyStats] = useState({ easy: { total: 0, completed: 0 }, medium: { total: 0, completed: 0 }, hard: { total: 0, completed: 0 } });
 
     // Save completed problems to localStorage
     useEffect(() => {
@@ -61,6 +46,16 @@ const Problems = () => {
             total: problems.length,
             completed: completedProblems.length
         });
+        // Calculate difficulty stats
+        const diffStats = { easy: { total: 0, completed: 0 }, medium: { total: 0, completed: 0 }, hard: { total: 0, completed: 0 } };
+        for (const p of problems) {
+            const diff = String(p.difficulty).toLowerCase();
+            if (diffStats[diff] !== undefined) {
+                diffStats[diff].total++;
+                if (completedProblems.map(String).includes(String(p.id))) diffStats[diff].completed++;
+            }
+        }
+        setDifficultyStats(diffStats);
     }, [completedProblems, problems]);
 
     // Fetch problems from API
@@ -110,6 +105,7 @@ const Problems = () => {
             const s = search.toLowerCase().trim();
             filtered = filtered.filter(
                 (p) =>
+                    p.id.toLowerCase().includes(s) ||
                     p.title.toLowerCase().includes(s) ||
                     p.companies.some((c) => c.toLowerCase().includes(s)) ||
                     p.topics.some((t) => t.toLowerCase().includes(s))
@@ -146,43 +142,24 @@ const Problems = () => {
         }
 
         // Apply sorting
-        if (sortConfig.key) {
-            filtered.sort((a, b) => {
-                if (sortConfig.key === 'difficulty') {
-                    const order = { easy: 1, medium: 2, hard: 3, unknown: 4 };
-                    const aDiff = a.difficulty;
-                    const bDiff = b.difficulty;
-                    return sortConfig.direction === 'asc'
-                        ? order[aDiff] - order[bDiff]
-                        : order[bDiff] - order[aDiff];
-                }
-
-                if (sortConfig.key === 'rating') {
-                    const aRating = Number(a.rating) || 0;
-                    const bRating = Number(b.rating) || 0;
-                    return sortConfig.direction === 'asc'
-                        ? aRating - bRating
-                        : bRating - aRating;
-                }
-
-                if (sortConfig.key === 'id') {
-                    const aNum = parseInt(a.id) || 0;
-                    const bNum = parseInt(b.id) || 0;
-                    return sortConfig.direction === 'asc'
-                        ? aNum - bNum
-                        : bNum - aNum;
-                }
-
-                const aValue = String(a[sortConfig.key] || '').toLowerCase();
-                const bValue = String(b[sortConfig.key] || '').toLowerCase();
+        const sortedProblems = [...filtered].sort((a, b) => {
+            if (sortConfig.key === 'id') {
+                return sortConfig.direction === 'asc' ? a.id - b.id : b.id - a.id;
+            }
+            if (sortConfig.key === 'rating') {
+                return sortConfig.direction === 'asc' ? (a.rating || 0) - (b.rating || 0) : (b.rating || 0) - (a.rating || 0);
+            }
+            if (sortConfig.key === 'difficulty') {
+                const order = { easy: 1, medium: 2, hard: 3 };
                 return sortConfig.direction === 'asc'
-                    ? aValue.localeCompare(bValue)
-                    : bValue.localeCompare(aValue);
-            });
-        }
+                    ? (order[a.difficulty] || 0) - (order[b.difficulty] || 0)
+                    : (order[b.difficulty] || 0) - (order[a.difficulty] || 0);
+            }
+            return 0;
+        });
 
-        setFilteredProblems(filtered);
-        setCurrentPage(1); // Reset to first page when filters change
+        setFilteredProblems(sortedProblems);
+        setCurrentPage(1);
     }, [problems, search, companyFilter, difficultyFilter, topicFilter, ratingRange, sortConfig]);
 
     const toggleCompleted = (problemId) => {
@@ -278,9 +255,16 @@ const Problems = () => {
         }
     };
 
+    const toggleCompanies = (problemId) => {
+        setExpandedCompanies((prev) => ({
+            ...prev,
+            [problemId]: !prev[problemId],
+        }));
+    };
+
     if (loading) {
         return (
-            <div className="flex justify-center items-center min-h-screen dark:bg-gray-900">
+            <div className="flex justify-center items-center min-h-screen">
                 <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
             </div>
         );
@@ -288,10 +272,10 @@ const Problems = () => {
 
     if (error) {
         return (
-            <div className="flex justify-center items-center min-h-screen dark:bg-gray-900">
-                <div className="max-w-md p-6 bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+            <div className="flex justify-center items-center min-h-screen">
+                <div className="max-w-md p-6 bg-white rounded-lg shadow-lg">
                     <h2 className="text-xl font-bold text-red-500 mb-4">Error Loading Problems</h2>
-                    <p className="text-gray-700 dark:text-gray-300 mb-4">{error}</p>
+                    <p className="text-gray-700 mb-4">{error}</p>
                     <button
                         onClick={() => window.location.reload()}
                         className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
@@ -304,98 +288,51 @@ const Problems = () => {
     }
 
     return (
-        <div className="min-h-screen w-full bg-gray-50 dark:bg-gray-900 flex flex-col">
+        <div className="min-h-screen w-full bg-gray-50 dark:bg-[#181A1B] flex flex-col px-2 sm:px-4 md:px-8">
             <div className="w-full max-w-7xl mx-auto">
-                {/* Navbar */}
-                <nav className="bg-white dark:bg-gray-800 shadow-lg sticky top-0 z-50 flex items-center justify-between px-4 py-3 rounded-lg mb-6">
-                    <div className="flex items-center gap-4">
-                        <span className="text-xl font-bold text-gray-800 dark:text-gray-100 flex items-center">
+                {/* Navbar: responsive text and spacing */}
+                <nav className="bg-white dark:bg-[#23272A] shadow-lg sticky top-0 z-50 flex items-center justify-between px-2 sm:px-4 py-2 md:py-3 rounded-lg mb-4 md:mb-6 gap-2 md:gap-0">
+                    <div className="flex items-center gap-2 md:gap-4">
+                        <span className="text-lg md:text-xl font-bold text-gray-800 dark:text-gray-100 flex items-center">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mr-2 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                             </svg>
                             GrindLC
                         </span>
-                        <div className="hidden md:flex items-center space-x-2 text-sm">
-                            <span className="px-2 py-1 bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 rounded-full">
-                                {stats.completed} / {stats.total} solved
-                            </span>
-                            <div className="w-32 bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
-                                <div
-                                    className="bg-green-500 h-2.5 rounded-full"
-                                    style={{ width: `${stats.total ? (stats.completed / stats.total) * 100 : 0}%` }}
-                                ></div>
-                            </div>
-                        </div>
+                        <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full">
+                            {stats.completed} / {stats.total} solved
+                        </span>
                     </div>
-                    <div className="flex items-center gap-4">
-                        <button
-                            onClick={() => setDarkMode((prev) => !prev)}
-                            className="p-2 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-                            aria-label="Toggle dark mode"
-                        >
-                            {darkMode ? (
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                    <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
-                                </svg>
-                            ) : (
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
-                                </svg>
-                            )}
-                        </button>
+                    <div className="flex items-center space-x-2 text-sm">
+                        <span className="px-2 py-1 bg-green-200 text-green-800 rounded-full">
+                            Easy: {difficultyStats.easy.completed}/{difficultyStats.easy.total}
+                        </span>
+                        <span className="px-2 py-1 bg-yellow-200 text-yellow-800 rounded-full">
+                            Medium: {difficultyStats.medium.completed}/{difficultyStats.medium.total}
+                        </span>
+                        <span className="px-2 py-1 bg-red-200 text-red-800 rounded-full">
+                            Hard: {difficultyStats.hard.completed}/{difficultyStats.hard.total}
+                        </span>
                     </div>
                 </nav>
 
-                {/* Filters Section */}
-                <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg p-6 mb-6">
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
-                            Problem Filters
-                        </h2>
-                        <div className="flex gap-2">
-                            <button
-                                onClick={resetFilters}
-                                className="px-3 py-1 text-sm font-semibold rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-gray-600"
-                            >
-                                Reset All
-                            </button>
-                            <button
-                                onClick={() => setShowTopics((prev) => !prev)}
-                                className="px-3 py-1 text-sm font-semibold rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-400 dark:focus:ring-gray-600"
-                            >
-                                {showTopics ? 'Hide Topics' : 'Show Topics'}
-                            </button>
+                {/* Filters Section: responsive grid */}
+                <div className="bg-white dark:bg-[#23272A] shadow-lg rounded-lg p-2 sm:p-4 mb-4 md:mb-6">
+                    <div className="flex flex-col md:flex-row flex-wrap gap-2 md:gap-4 items-center w-full">
+                        <div className="flex-1 min-w-[140px]">
+                            <input
+                                type="text"
+                                placeholder="Search problems..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-[#181A1B] dark:text-gray-100 text-sm md:text-base"
+                            />
                         </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                Search
-                            </label>
-                            <div className="relative">
-                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                    </svg>
-                                </div>
-                                <input
-                                    type="text"
-                                    placeholder="Search problems..."
-                                    value={search}
-                                    onChange={(e) => setSearch(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                                />
-                            </div>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                Company
-                            </label>
+                        <div className="flex-1 min-w-[140px]">
                             <select
                                 value={companyFilter}
                                 onChange={(e) => setCompanyFilter(e.target.value)}
-                                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-[#181A1B] dark:text-gray-100 text-sm md:text-base"
                             >
                                 <option value="">All Companies</option>
                                 {allCompanies.map((company) => (
@@ -403,14 +340,11 @@ const Problems = () => {
                                 ))}
                             </select>
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                Difficulty
-                            </label>
+                        <div className="flex-1 min-w-[140px]">
                             <select
                                 value={difficultyFilter}
                                 onChange={(e) => setDifficultyFilter(e.target.value)}
-                                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-[#181A1B] dark:text-gray-100 text-sm md:text-base"
                             >
                                 <option value="">All Difficulties</option>
                                 {allDifficulties.map((diff) => (
@@ -418,14 +352,11 @@ const Problems = () => {
                                 ))}
                             </select>
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                Topic
-                            </label>
+                        <div className="flex-1 min-w-[140px]">
                             <select
                                 value={topicFilter}
                                 onChange={(e) => setTopicFilter(e.target.value)}
-                                className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-[#181A1B] dark:text-gray-100 text-sm md:text-base"
                             >
                                 <option value="">All Topics</option>
                                 {allTopics.map((topic) => (
@@ -433,346 +364,192 @@ const Problems = () => {
                                 ))}
                             </select>
                         </div>
-                        <div className="lg:col-span-2">
-                            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                Rating Range
-                            </label>
-                            <div className="flex items-center gap-4">
-                                <div className="flex-1 flex items-center gap-2">
-                                    <input
-                                        type="number"
-                                        placeholder="Min"
-                                        value={ratingRange.min}
-                                        onChange={(e) => {
-                                            const value = e.target.value;
-                                            if (value === '' || (parseInt(value) >= 0 && parseInt(value) <= 3000)) {
-                                                setRatingRange(prev => ({ ...prev, min: value }));
-                                            }
-                                        }}
-                                        className="flex-1 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                                    />
-                                    <span className="text-gray-500 dark:text-gray-400">to</span>
-                                    <input
-                                        type="number"
-                                        placeholder="Max"
-                                        value={ratingRange.max}
-                                        onChange={(e) => {
-                                            const value = e.target.value;
-                                            if (value === '' || (parseInt(value) >= 0 && parseInt(value) <= 3000)) {
-                                                setRatingRange(prev => ({ ...prev, max: value }));
-                                            }
-                                        }}
-                                        className="flex-1 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                                    />
-                                </div>
-                            </div>
+                        <div className="flex-1 min-w-[140px] flex gap-2 items-center w-full md:w-auto">
+                            <input
+                                type="number"
+                                placeholder="Min"
+                                value={ratingRange.min}
+                                onChange={(e) => setRatingRange((prev) => ({ ...prev, min: e.target.value }))}
+                                className="w-20 min-w-[70px] px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-[#181A1B] dark:text-gray-100 text-xs"
+                            />
+                            <span className="text-gray-500 dark:text-gray-300">to</span>
+                            <input
+                                type="number"
+                                placeholder="Max"
+                                value={ratingRange.max}
+                                onChange={(e) => setRatingRange((prev) => ({ ...prev, max: e.target.value }))}
+                                className="w-20 min-w-[70px] px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-[#181A1B] dark:text-gray-100 text-xs"
+                            />
+                        </div>
+                        <div className="flex gap-2 mt-2 sm:mt-0">
+                            <button
+                                onClick={() => setShowTopics(!showTopics)}
+                                className="px-3 py-1 text-xs md:text-sm bg-gray-100 dark:bg-[#181A1B] rounded-lg hover:bg-gray-200 dark:hover:bg-[#23272A] transition-colors dark:text-white"
+                            >
+                                {showTopics ? 'Hide Topics' : 'Show Topics'}
+                            </button>
+                            <button
+                                onClick={resetFilters}
+                                className="px-3 py-1 text-xs md:text-sm bg-gray-100 dark:bg-[#181A1B] rounded-lg hover:bg-gray-200 dark:hover:bg-[#23272A] transition-colors dark:text-white"
+                            >
+                                Reset All
+                            </button>
                         </div>
                     </div>
                 </div>
 
-                {/* Problems Table */}
-                <div className="bg-white dark:bg-gray-900 rounded-lg shadow-lg overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full table-auto border-separate border-spacing-0">
-                            <thead className="bg-gray-50 dark:bg-gray-700">
-                                <tr>
-                                    <th
-                                        scope="col"
-                                        className="sticky top-0 px-4 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
-                                        onClick={() => setSortConfig(prev => ({
-                                            key: 'id',
-                                            direction: prev.key === 'id' && prev.direction === 'asc' ? 'desc' : 'asc'
-                                        }))}
-                                    >
-                                        <div className="flex items-center">
-                                            ID
-                                            {sortConfig.key === 'id' && (
-                                                <span className="ml-1">
-                                                    {sortConfig.direction === 'asc' ? (
-                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                                            <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
-                                                        </svg>
-                                                    ) : (
-                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                                                        </svg>
-                                                    )}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </th>
-                                    <th
-                                        scope="col"
-                                        className="sticky top-0 px-4 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
-                                        onClick={() => setSortConfig(prev => ({
-                                            key: 'title',
-                                            direction: prev.key === 'title' && prev.direction === 'asc' ? 'desc' : 'asc'
-                                        }))}
-                                    >
-                                        <div className="flex items-center">
-                                            Title
-                                            {sortConfig.key === 'title' && (
-                                                <span className="ml-1">
-                                                    {sortConfig.direction === 'asc' ? (
-                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                                            <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
-                                                        </svg>
-                                                    ) : (
-                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                                                        </svg>
-                                                    )}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </th>
-                                    <th
-                                        scope="col"
-                                        className="sticky top-0 px-4 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
-                                        onClick={() => setSortConfig(prev => ({
-                                            key: 'difficulty',
-                                            direction: prev.key === 'difficulty' && prev.direction === 'asc' ? 'desc' : 'asc'
-                                        }))}
-                                    >
-                                        <div className="flex items-center">
-                                            Difficulty
-                                            {sortConfig.key === 'difficulty' && (
-                                                <span className="ml-1">
-                                                    {sortConfig.direction === 'asc' ? (
-                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                                            <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
-                                                        </svg>
-                                                    ) : (
-                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                                                        </svg>
-                                                    )}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </th>
-                                    <th
-                                        scope="col"
-                                        className="sticky top-0 px-4 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
-                                        onClick={() => setSortConfig(prev => ({
-                                            key: 'rating',
-                                            direction: prev.key === 'rating' && prev.direction === 'asc' ? 'desc' : 'asc'
-                                        }))}
-                                    >
-                                        <div className="flex items-center">
-                                            Rating
-                                            {sortConfig.key === 'rating' && (
-                                                <span className="ml-1">
-                                                    {sortConfig.direction === 'asc' ? (
-                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                                            <path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" />
-                                                        </svg>
-                                                    ) : (
-                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                                                        </svg>
-                                                    )}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </th>
-                                    {showTopics && (
-                                        <th
-                                            scope="col"
-                                            className="sticky top-0 px-4 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider"
-                                        >
-                                            Topics
-                                        </th>
-                                    )}
-                                    <th
-                                        scope="col"
-                                        className="sticky top-0 px-4 py-3 text-left text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider"
-                                    >
-                                        Companies
-                                    </th>
-                                    <th
-                                        scope="col"
-                                        className="sticky top-0 px-4 py-3 text-right text-xs font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wider"
-                                    >
-                                        Status
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                                {currentProblems.length > 0 ? (
-                                    currentProblems.map((problem) => (
-                                        <tr
-                                            key={problem.id}
-                                            className={`transition-colors ${completedProblems.includes(problem.id)
-                                                ? 'bg-green-200 dark:bg-green-900 hover:bg-green-300 dark:hover:bg-green-800'
-                                                : 'hover:bg-gray-50 dark:hover:bg-gray-800'}`}
-                                        >
-                                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
-                                                {problem.id}
-                                            </td>
-                                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                                                <a
-                                                    href={problem.url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
-                                                >
-                                                    {problem.title}
-                                                </a>
-                                            </td>
-                                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                                                <span className={`px-2 py-1 text-xs font-medium rounded-full ${getDifficultyColor(problem.difficulty)}`}>
-                                                    {problem.difficulty}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
-                                                {problem.rating || 'N/A'}
-                                            </td>
-                                            {showTopics && (
-                                                <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                                                    <div className="flex flex-wrap gap-1">
-                                                        {problem.topics.slice(0, 3).map((topic, index) => (
-                                                            <span
-                                                                key={index}
-                                                                className="px-2 py-1 text-xs font-medium text-indigo-600 bg-indigo-100 rounded-full dark:text-indigo-400 dark:bg-indigo-900/50 hover:bg-indigo-200 dark:hover:bg-indigo-900 transition-colors cursor-pointer"
-                                                                onClick={() => setTopicFilter(topic)}
-                                                            >
-                                                                {topic}
-                                                            </span>
-                                                        ))}
-                                                        {problem.topics.length > 3 && (
-                                                            <span className="px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 rounded-full dark:text-gray-400 dark:bg-gray-700">
-                                                                +{problem.topics.length - 3}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                            )}
-                                            <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">
-                                                <div className="flex flex-wrap gap-1">
-                                                    {problem.companies.slice(0, 3).map((company, index) => (
-                                                        <span
-                                                            key={index}
-                                                            className="px-2 py-1 text-xs font-medium text-purple-600 bg-purple-100 rounded-full dark:text-purple-400 dark:bg-purple-900/50 hover:bg-purple-200 dark:hover:bg-purple-900 transition-colors cursor-pointer"
-                                                            onClick={() => setCompanyFilter(company)}
-                                                        >
-                                                            {company}
-                                                        </span>
-                                                    ))}
-                                                    {problem.companies.length > 3 && (
-                                                        <span className="px-2 py-1 text-xs font-medium text-gray-600 bg-gray-100 rounded-full dark:text-gray-400 dark:bg-gray-700">
-                                                            +{problem.companies.length - 3}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
-                                                <button
-                                                    onClick={() => toggleCompleted(problem.id)}
-                                                    className={`px-4 py-2 text-xs rounded-lg font-medium transition-colors ${completedProblems.includes(problem.id)
-                                                        ? 'bg-green-500 text-white dark:bg-green-600 hover:bg-green-600 dark:hover:bg-green-700'
-                                                        : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'}`}
-                                                >
-                                                    {completedProblems.includes(problem.id) ? 'Completed' : 'Mark Done'}
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))
-                                ) : (
-                                    <tr>
-                                        <td colSpan="7" className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
-                                            No problems found matching your filters. Try adjusting your search criteria.
-                                        </td>
-                                    </tr>
+                {/* Table: responsive text, scroll on small screens */}
+                <div className="bg-white dark:bg-[#23272A] shadow-lg rounded-lg overflow-x-auto">
+                    <table className="w-full text-xs sm:text-sm md:text-base">
+                        <thead>
+                            <tr className="bg-gray-50 dark:bg-[#23272A]">
+                                <th
+                                    className="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer select-none"
+                                    onClick={() => setSortConfig(prev => ({ key: 'id', direction: prev.key === 'id' && prev.direction === 'asc' ? 'desc' : 'asc' }))}
+                                >
+                                    <div className="flex items-center gap-1">
+                                        ID
+                                        {sortConfig.key === 'id' && (
+                                            <span>{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>
+                                        )}
+                                    </div>
+                                </th>
+                                <th className="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Title</th>
+                                {showTopics && (
+                                    <th className="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Topics</th>
                                 )}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {/* Pagination */}
-                    {totalPages > 1 && (
-                        <div className="px-4 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700">
-                            <div className="flex-1 flex justify-between sm:hidden">
-                                <button
-                                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                                    disabled={currentPage === 1}
-                                    className="relative inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                <th className="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Companies</th>
+                                <th
+                                    className="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer select-none"
+                                    onClick={() => setSortConfig(prev => ({ key: 'difficulty', direction: prev.key === 'difficulty' && prev.direction === 'asc' ? 'desc' : 'asc' }))}
                                 >
-                                    Previous
-                                </button>
-                                <button
-                                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                                    disabled={currentPage === totalPages}
-                                    className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-sm font-medium rounded-md text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    <div className="flex items-center gap-1">
+                                        Difficulty
+                                        {sortConfig.key === 'difficulty' && (
+                                            <span>{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>
+                                        )}
+                                    </div>
+                                </th>
+                                <th
+                                    className="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider cursor-pointer select-none"
+                                    onClick={() => setSortConfig(prev => ({ key: 'rating', direction: prev.key === 'rating' && prev.direction === 'asc' ? 'desc' : 'asc' }))}
                                 >
-                                    Next
-                                </button>
-                            </div>
-                            <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                                <div>
-                                    <p className="text-sm text-gray-700 dark:text-gray-300">
-                                        Showing <span className="font-medium">{indexOfFirstProblem + 1}</span> to{' '}
-                                        <span className="font-medium">
-                                            {Math.min(indexOfLastProblem, filteredProblems.length)}
-                                        </span>{' '}
-                                        of <span className="font-medium">{filteredProblems.length}</span> results
-                                    </p>
-                                </div>
-                                <div>
-                                    <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+                                    <div className="flex items-center gap-1">
+                                        Rating
+                                        {sortConfig.key === 'rating' && (
+                                            <span>{sortConfig.direction === 'asc' ? '▲' : '▼'}</span>
+                                        )}
+                                    </div>
+                                </th>
+                                <th className="px-2 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {currentProblems.map((problem, idx) => (
+                                <tr
+                                    key={problem.id}
+                                    className={`transition-colors${completedProblems.includes(problem.id)
+                                        ? ' bg-green-300 dark:bg-green-950'
+                                        : ' hover:bg-gray-50 dark:hover:bg-[#181A1B]'}${idx !== currentProblems.length - 1 ? ' border-b border-gray-300 dark:border-gray-700' : ''}`}
+                                >
+                                    <td className="px-2 sm:px-4 py-2 whitespace-nowrap text-sm text-gray-900">{problem.id}</td>
+                                    <td className="px-2 sm:px-4 py-2 whitespace-nowrap text-sm text-gray-900">
+                                        <a href={problem.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">{problem.title}</a>
+                                    </td>
+                                    {showTopics && (
+                                        <td className="px-2 sm:px-4 py-2 text-sm text-gray-900">
+                                            <div className="flex flex-wrap gap-1">
+                                                {problem.topics.slice(0, 3).map((topic, index) => (
+                                                    <span key={index} className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-full">{topic}</span>
+                                                ))}
+                                            </div>
+                                        </td>
+                                    )}
+                                    <td className="px-2 sm:px-4 py-2 text-sm text-gray-900">
+                                        <div className="flex flex-wrap gap-1 items-center">
+                                            {(expandedCompanies[problem.id] ? problem.companies : problem.companies.slice(0, 3)).map((company, index) => (
+                                                <span key={index} className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-full">{company}</span>
+                                            ))}
+                                            {problem.companies.length > 3 && !expandedCompanies[problem.id] && (
+                                                <span
+                                                    className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-full cursor-pointer select-none"
+                                                    onClick={() => toggleCompanies(problem.id)}
+                                                >
+                                                    +{problem.companies.length - 3}
+                                                </span>
+                                            )}
+                                            {problem.companies.length > 3 && expandedCompanies[problem.id] && (
+                                                <span
+                                                    className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 rounded-full cursor-pointer select-none"
+                                                    onClick={() => toggleCompanies(problem.id)}
+                                                >
+                                                    …
+                                                </span>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="px-2 sm:px-4 py-2 text-sm text-gray-900 text-center">
+                                        <span className={`px-2 py-1 text-xs rounded-full font-semibold ${problem.difficulty === 'easy' ? 'bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-200' : problem.difficulty === 'medium' ? 'bg-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' : 'bg-red-200 text-red-800 dark:bg-red-900 dark:text-red-200'}`}>{problem.difficulty}</span>
+                                    </td>
+                                    <td className="px-2 sm:px-4 py-2 text-sm text-gray-900 text-center">{problem.rating || 'N/A'}</td>
+                                    <td className="px-2 sm:px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900 text-center">
                                         <button
-                                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                                            disabled={currentPage === 1}
-                                            className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            onClick={() => toggleCompleted(problem.id)}
+                                            className={`px-4 py-2 text-xs rounded-lg font-medium transition-colors ${completedProblems.includes(problem.id)
+                                                ? 'bg-green-500 text-white hover:bg-green-600'
+                                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                                         >
-                                            <span className="sr-only">Previous</span>
-                                            <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                                <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
-                                            </svg>
+                                            {completedProblems.includes(problem.id) ? 'Completed' : 'Mark Done'}
                                         </button>
-                                        {getPageNumbers().map((pageNum, index) => (
-                                            <button
-                                                key={index}
-                                                onClick={() => typeof pageNum === 'number' && setCurrentPage(pageNum)}
-                                                disabled={pageNum === '...'}
-                                                className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${pageNum === currentPage
-                                                    ? 'z-10 bg-indigo-50 dark:bg-indigo-900 border-indigo-500 dark:border-indigo-600 text-indigo-600 dark:text-indigo-300'
-                                                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                                    } ${pageNum === '...' ? 'cursor-default' : 'cursor-pointer'}`}
-                                            >
-                                                {pageNum}
-                                            </button>
-                                        ))}
-                                        <button
-                                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                                            disabled={currentPage === totalPages}
-                                            className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm font-medium text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            <span className="sr-only">Next</span>
-                                            <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                                                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                                            </svg>
-                                        </button>
-                                    </nav>
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
 
-                {/* Feedback Box */}
-                <div className="mt-6 bg-white dark:bg-gray-900 rounded-lg shadow-lg p-6">
-                    <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">Feedback</h2>
+                {/* Pagination Controls: responsive padding and text */}
+                {totalPages > 1 && (
+                    <div className="flex justify-center items-center gap-2 mt-4">
+                        <button
+                            onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                            disabled={currentPage === 1}
+                            className="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50"
+                        >
+                            Prev
+                        </button>
+                        {getPageNumbers().map((pageNum, idx) => (
+                            <button
+                                key={idx}
+                                onClick={() => typeof pageNum === 'number' && setCurrentPage(pageNum)}
+                                disabled={pageNum === '...'}
+                                className={`px-2 py-1 rounded ${pageNum === currentPage ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200'} ${pageNum === '...' ? 'cursor-default' : 'cursor-pointer'}`}
+                            >
+                                {pageNum}
+                            </button>
+                        ))}
+                        <button
+                            onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                            disabled={currentPage === totalPages}
+                            className="px-2 py-1 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50"
+                        >
+                            Next
+                        </button>
+                    </div>
+                )}
+
+                {/* Feedback Box: responsive padding and text */}
+                <div className="mt-6 md:mt-8 bg-white dark:bg-[#23272A] shadow-lg rounded-lg p-3 sm:p-6">
+                    <h3 className="text-base md:text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2 md:mb-4">Feedback</h3>
                     <textarea
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                        rows="4"
-                        placeholder="Share your feedback..."
                         value={feedback}
                         onChange={(e) => setFeedback(e.target.value)}
+                        placeholder="Share your thoughts about the problems or suggest improvements..."
+                        className="w-full h-24 md:h-32 px-3 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-[#181A1B] dark:text-gray-100 text-xs md:text-base resize-none"
                     />
                     <button
-                        className="mt-4 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400"
                         onClick={handleFeedbackSubmit}
+                        className="mt-3 md:mt-4 px-3 md:px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-xs md:text-base"
                     >
                         Submit Feedback
                     </button>
